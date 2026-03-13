@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 
 public class LootboxTool : MonoBehaviour
 {
@@ -111,11 +114,60 @@ public class LootboxTool : MonoBehaviour
 
 	private void Update()
 	{
-		if (Input.GetKeyDown(toggleInventoryKey))
+		if (WasToggleInventoryPressedThisFrame())
 		{
 			inventoryOpen = !inventoryOpen;
 		}
 	}
+
+	private bool WasToggleInventoryPressedThisFrame()
+	{
+#if ENABLE_INPUT_SYSTEM
+		if (Keyboard.current != null && TryGetInputSystemKey(toggleInventoryKey, out var key))
+		{
+			var keyControl = Keyboard.current[key];
+			if (keyControl != null && keyControl.wasPressedThisFrame)
+			{
+				return true;
+			}
+		}
+#endif
+
+#if ENABLE_LEGACY_INPUT_MANAGER
+		return Input.GetKeyDown(toggleInventoryKey);
+#else
+		return false;
+#endif
+	}
+
+#if ENABLE_INPUT_SYSTEM
+	private static bool TryGetInputSystemKey(KeyCode keyCode, out Key key)
+	{
+		var keyName = keyCode.ToString();
+
+		if (keyName.StartsWith("Alpha", StringComparison.Ordinal))
+		{
+			keyName = "Digit" + keyName.Substring("Alpha".Length);
+		}
+		else if (keyName.StartsWith("Keypad", StringComparison.Ordinal))
+		{
+			keyName = "Numpad" + keyName.Substring("Keypad".Length);
+		}
+		else if (string.Equals(keyName, nameof(KeyCode.Return), StringComparison.Ordinal)
+			|| string.Equals(keyName, nameof(KeyCode.KeypadEnter), StringComparison.Ordinal))
+		{
+			keyName = nameof(Key.Enter);
+		}
+
+		if (Enum.TryParse(keyName, ignoreCase: false, out key) && key != Key.None)
+		{
+			return true;
+		}
+
+		key = Key.None;
+		return false;
+	}
+#endif
 
 	private static ItemTool FindItemToolInScene()
 	{
