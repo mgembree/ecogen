@@ -153,8 +153,8 @@ MonoBehaviour:
   roomMax: 20
   generateOnStart: 1
   biomeToBeGenerated: volcanic
-  creatureCrWeightExponent: 1000
-  creaturePopulationMultiplier: 5
+  creatureCrWeightExponent: 1
+  creaturePopulationMultiplier: 1
   spawnRoomObjects: 1
   roomPrefab: {fileID: 6501199165560035516, guid: b9ae01189a574f1418aaf4c2094392a8, type: 3}
   roomsParent: {fileID: 0}
@@ -436,6 +436,91 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1021381563
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1021381565}
+  - component: {fileID: 1021381564}
+  m_Layer: 0
+  m_Name: CardCombatGameState
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1021381564
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1021381563}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 77aa7bfc6118ccb4abc0d261eb9e1bd8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CardCombatGameState
+  ecosystemGenerator: {fileID: 460000422}
+  autoGenerateMapIfMissing: 1
+  playerMaxHp: 60
+  handSize: 6
+  energyPerTurn: 4
+  attackCardCount: 8
+  blockCardCount: 8
+  cardCost: 1
+  attackDamage: 5
+  blockAmount: 5
+  heavyStrikeCount: 2
+  heavyStrikeDamage: 9
+  heavyStrikeCost: 2
+  shieldWallCount: 2
+  shieldWallBlock: 10
+  shieldWallCost: 2
+  mendCount: 2
+  mendHeal: 4
+  mendCost: 1
+  insightCount: 2
+  insightDraw: 2
+  insightCost: 1
+  sparkCount: 2
+  sparkEnergyGain: 2
+  sparkCost: 1
+  baseEnemyHp: 18
+  hpPerDanger: 8
+  minEnemyDamage: 1
+  maxEnemyDamageFloor: 4
+  damagePerDanger: 2
+  bossDangerMultiplier: 1.75
+  bossHpMultiplier: 1.8
+  bossDamageMultiplier: 1.5
+  dangerPerDepthStep: 1.2
+  occupantDangerVarianceMax: 0.4
+  useDebugOnGui: 1
+  logRoomSelectionIssues: 1
+  colorCodeRoomButtonsByDanger: 1
+  lowDangerButtonColor: {r: 0.5, g: 0.85, b: 0.45, a: 1}
+  mediumDangerButtonColor: {r: 0.93, g: 0.82, b: 0.35, a: 1}
+  highDangerButtonColor: {r: 0.9, g: 0.38, b: 0.3, a: 1}
+--- !u!4 &1021381565
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1021381563}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -443,3 +528,4 @@ SceneRoots:
   - {fileID: 519420032}
   - {fileID: 619394802}
   - {fileID: 460000423}
+  - {fileID: 1021381565}
