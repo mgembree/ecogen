@@ -65,9 +65,6 @@ public class dungeonGenerator : MonoBehaviour
 	private bool showBiomeLabel = true;
 	private Vector2 biomeLabelPosition = new Vector2(16f, 64f);
 	private Vector2 biomeLabelSize = new Vector2(240f, 24f);
-	private bool showRoomInfoPanel = true;
-	private Vector2 roomInfoPosition = new Vector2(16f, 96f);
-	private Vector2 roomInfoSize = new Vector2(320f, 140f);
 	[TextArea(6, 20)] private string lastOutput;
 
 	private readonly List<GameObject> spawnedRooms = new List<GameObject>();
@@ -77,6 +74,9 @@ public class dungeonGenerator : MonoBehaviour
 	private GameObject roomPreviewRoot;
 	private static Sprite previewSprite;
 	private readonly Dictionary<string, Sprite> creatureSpritesByName = new Dictionary<string, Sprite>(StringComparer.OrdinalIgnoreCase);
+	private readonly Dictionary<string, float> creatureDangerByName = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+	private readonly List<RoomData> generatedRooms = new List<RoomData>();
+	private readonly Dictionary<int, int[]> generatedAdjacencyByRoomId = new Dictionary<int, int[]>();
 
 	private void Start()
 	{
@@ -110,15 +110,7 @@ public class dungeonGenerator : MonoBehaviour
 			var biomeRect = new Rect(biomeLabelPosition, biomeLabelSize);
 			GUI.Label(biomeRect, $"Biome: {currentBiome}");
 		}
-
-		if (showRoomInfoPanel)
-		{
-			var infoRect = new Rect(roomInfoPosition, roomInfoSize);
-			var text = selectedRoom == null
-				? "Click a room to see creatures."
-				: $"Room: {selectedRoom.label}\nZone: {selectedRoom.zoneType}\nSize: {selectedRoom.size}\nCreatures: {(selectedRoom.occupants != null && selectedRoom.occupants.Length > 0 ? string.Join(", ", selectedRoom.occupants) : "None")}\nNeighbors: {(selectedRoom.neighbors != null && selectedRoom.neighbors.Length > 0 ? string.Join(", ", selectedRoom.neighbors) : "None")}";
-			GUI.Box(infoRect, text);
-		}
+		//get rid of showroominfo
 	}
 
 	[ContextMenu("Generate Ecosystem")]
@@ -132,6 +124,7 @@ public class dungeonGenerator : MonoBehaviour
 		}
 
 		BuildCreatureSpriteLookup(ecosystem);
+		BuildCreatureDangerLookup(ecosystem);
 
 		var output = new StringBuilder();
 		ClearSpawnedRooms();
@@ -151,6 +144,7 @@ public class dungeonGenerator : MonoBehaviour
 		EnsureGoalIsTerminal(graph.adjacency, positions, 0, roomCount - 1);
 		var assignment = AssignRooms(graph, ecosystem, biomeToBeGenerated);
 		currentBiome = assignment.biome;
+		CacheGeneratedMap(assignment.rooms, graph.adjacency);
 		var text = RenderRooms(graph, assignment.biome, assignment.rooms);
 
 		output.AppendLine(text);
@@ -170,6 +164,90 @@ public class dungeonGenerator : MonoBehaviour
 
 		lastOutput = output.ToString().TrimEnd();
 		Debug.Log(lastOutput);
+	}
+
+	public IReadOnlyList<RoomData> GetGeneratedRooms()
+	{
+		return generatedRooms;
+	}
+
+	public int[] GetNeighborRoomIds(int roomId)
+	{
+		if (!generatedAdjacencyByRoomId.TryGetValue(roomId, out var source))
+		{
+			return Array.Empty<int>();
+		}
+
+		if (source == null || source.Length == 0)
+		{
+			return Array.Empty<int>();
+		}
+
+		var copy = new int[source.Length];
+		Array.Copy(source, copy, source.Length);
+		return copy;
+	}
+
+	public float GetCreatureDangerRating(string creatureName)
+	{
+		if (string.IsNullOrWhiteSpace(creatureName))
+		{
+			return 1f;
+		}
+
+		return creatureDangerByName.TryGetValue(creatureName.Trim(), out var danger)
+			? Mathf.Max(0.1f, danger)
+			: 1f;
+	}
+
+	private void CacheGeneratedMap(List<RoomData> rooms, List<HashSet<int>> adjacency)
+	{
+		generatedRooms.Clear();
+		generatedAdjacencyByRoomId.Clear();
+
+		if (rooms == null || adjacency == null)
+		{
+			return;
+		}
+
+		for (var i = 0; i < rooms.Count; i++)
+		{
+			var source = rooms[i];
+			if (source == null)
+			{
+				generatedRooms.Add(null);
+				continue;
+			}
+
+			generatedRooms.Add(new RoomData
+			{
+				id = source.id,
+				label = source.label,
+				biome = source.biome,
+				zoneType = source.zoneType,
+				size = source.size,
+				occupants = source.occupants != null ? new List<string>(source.occupants) : new List<string>()
+			});
+		}
+
+		for (var i = 0; i < adjacency.Count; i++)
+		{
+			var roomId = i;
+			if (rooms != null && i < rooms.Count && rooms[i] != null)
+			{
+				roomId = rooms[i].id;
+			}
+
+			if (adjacency[i] == null || adjacency[i].Count == 0)
+			{
+				generatedAdjacencyByRoomId[roomId] = Array.Empty<int>();
+				continue;
+			}
+
+			var neighbors = new List<int>(adjacency[i]);
+			neighbors.Sort();
+			generatedAdjacencyByRoomId[roomId] = neighbors.ToArray();
+		}
 	}
 
 	private void HandleRoomClick()
@@ -1362,6 +1440,25 @@ public class dungeonGenerator : MonoBehaviour
 			{
 				creatureSpritesByName[creature.name] = sprite;
 			}
+		}
+	}
+
+	private void BuildCreatureDangerLookup(EcosystemData ecosystem)
+	{
+		creatureDangerByName.Clear();
+		if (ecosystem?.creatures == null)
+		{
+			return;
+		}
+
+		foreach (var creature in ecosystem.creatures)
+		{
+			if (creature == null || string.IsNullOrWhiteSpace(creature.name))
+			{
+				continue;
+			}
+
+			creatureDangerByName[creature.name.Trim()] = Mathf.Max(0.1f, creature.cr);
 		}
 	}
 
