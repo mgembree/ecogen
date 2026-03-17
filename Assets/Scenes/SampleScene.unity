@@ -148,8 +148,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e259bced364129c4290c7d44dd1167d8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LootboxTool
-  itemTool: {fileID: 2089942926}
-  useItemToolToGenerateArtifactSourceItems: 1
   defaultBoxTier: 1
   defaultBoxSize: 1
   defaultLuck: 0
@@ -209,7 +207,7 @@ MonoBehaviour:
   chooseRandomBiomeOnStart: 1
   nearestNeighborsPerNode: 1
   biomeToBeGenerated: volcanic
-  creatureCrWeightExponent: 2
+  creatureCrWeightExponent: 4
   creaturePopulationMultiplier: 1
   spawnRoomObjects: 1
   roomPrefab: {fileID: 6501199165560035516, guid: b9ae01189a574f1418aaf4c2094392a8, type: 3}
@@ -230,9 +228,9 @@ MonoBehaviour:
   previewRoomSprite: {fileID: 0}
   previewFallbackCreatureSprite: {fileID: 0}
   creatureIcons: []
-  noiseScale: 0.15
-  noiseJitter: 0.7
-  noiseMinSpacing: 1.5
+  noiseScale: 0.2
+  noiseJitter: 1
+  noiseMinSpacing: 3
   noiseCandidateMultiplier: 6
   noiseOctaves: 4
   noiseLacunarity: 2
@@ -522,13 +520,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CardCombatGameState
   ecosystemGenerator: {fileID: 460000422}
-  lootboxTool: {fileID: 0}
+  lootboxTool: {fileID: 138316169}
   autoGenerateMapIfMissing: 1
-  playerMaxHp: 60
+  playerMaxHp: 50
   handSize: 6
   energyPerTurn: 4
-  attackCardCount: 8
-  blockCardCount: 8
+  attackCardCount: 5
+  blockCardCount: 5
   cardCost: 1
   attackDamage: 5
   blockAmount: 5
@@ -572,6 +570,7 @@ MonoBehaviour:
   earlyEncounterRampCount: 5
   earlyEncounterHpRamp: 1.5
   earlyEncounterDamageRamp: 0.35
+  extraEnemyDamagePerDangerStep: 0.45
   useDebugOnGui: 1
   logRoomSelectionIssues: 1
   colorCodeRoomButtonsByDanger: 1
@@ -583,8 +582,29 @@ MonoBehaviour:
   lootboxRoomChance: 0.2
   minLootboxRooms: 1
   maxLootboxRooms: 2
-  lootboxRoomArtifactCount: 1
   grantLootboxOnEncounterDefeat: 0
+  combatBackgroundDimAlpha: 0.72
+  hitFlashDuration: 0.28
+  hitFlashAlpha: 0.45
+  globalBackgroundTexture: {fileID: 2800000, guid: ae263cd60f9cf7943b92c931e04cd78f, type: 3}
+  lootboxRoomBackgroundTexture: {fileID: 2800000, guid: 34a7b0b184f20d5498a053b77b9840be, type: 3}
+  combatRoomBackgroundTexture: {fileID: 2800000, guid: f71847e575ad6ce4ea1e2610155d84e0, type: 3}
+  gameTitle: Eco-Hunter
+  gameSubtitle: Build your deck, harvest creatures and relics, and survive a living
+    dungeon.
+  musicAudioSource: {fileID: 0}
+  gameplayMusic: {fileID: 8300000, guid: 5fd1c840d61ee1947a3aba63a2ae7e89, type: 3}
+  gameplayMusicVolume: 0.65
+  gameplayMusicFadeInSeconds: 2
+  sfxAudioSource: {fileID: 0}
+  attackSoundEffect: {fileID: 8300000, guid: 4f558c180a886ad46a99afc445b917bb, type: 3}
+  attackSoundEffectVolume: 0.9
+  blockSoundEffect: {fileID: 8300000, guid: ec459d0052346564793cd352fe9f1448, type: 3}
+  blockSoundEffectVolume: 0.85
+  drawCardSoundEffect: {fileID: 8300000, guid: 9af14b7afbaeaa949af98aec8cdafc9c, type: 3}
+  drawCardSoundEffectVolume: 0.8
+  victorySoundEffect: {fileID: 8300000, guid: 0c370fe88f90ae348804ef82daf841fb, type: 3}
+  victorySoundEffectVolume: 0.95
 --- !u!4 &1021381565
 Transform:
   m_ObjectHideFlags: 0
@@ -649,6 +669,11 @@ MonoBehaviour:
   specificBaseName: 
   useSpecificBaseCategory: 0
   specificBaseCategory: 
+  nameData:
+    baseNames: []
+    categories: []
+    prefix: []
+    suffix: []
   generatedHistory: []
 --- !u!4 &2089942927
 Transform:

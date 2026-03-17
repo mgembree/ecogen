@@ -32,7 +32,13 @@ public class LootboxTool : MonoBehaviour
 		DrawOnHeal,
 		VulnerableOnDamageCardPlay,
 		VulnerableEachTurnStart,
-		BonusDamageWhenEnemyVulnerable
+		BonusDamageWhenEnemyVulnerable,
+		HealOnDamageCardPlay,
+		BlockOnHeal,
+		DrawOnGainEnergyCardPlay,
+		BurnDamageBonus,
+		LootboxLuckBoost,
+		NextArtifactRoomBonusDrops
 	}
 
 	[Serializable]
@@ -53,8 +59,6 @@ public class LootboxTool : MonoBehaviour
 		public string description;
 		public string rarity;
 		public ArtifactEffectType effectType;
-		public string sourceItemName;
-		public string sourceItemRarity;
 	}
 
 	public struct ArtifactCombatBonuses
@@ -82,11 +86,18 @@ public class LootboxTool : MonoBehaviour
 		public int vulnerableOnDamageCardPlay;
 		public int vulnerableEachTurnStart;
 		public int bonusDamageWhenEnemyVulnerable;
+		public int healOnDamageCardPlayTriggers;
+		public int blockOnHealTriggers;
+		public int drawOnGainEnergyCardPlay;
+		public int burnDamageBonus;
 	}
 
-	[Header("References")]
-	[SerializeField] private ItemTool itemTool;
-	[SerializeField] private bool useItemToolToGenerateArtifactSourceItems = true;
+	private const string RarityCommon = "Common";
+	private const string RarityRare = "Rare";
+	private const string RarityEpic = "Epic";
+	private const string RarityLegendary = "Legendary";
+	private const float LootboxLuckBonusPerArtifact = 0.12f;
+	private const int NextArtifactRoomBonusDropsPerArtifact = 2;
 
 	[Header("Lootbox Defaults")]
 	[SerializeField, Min(1)] private int defaultBoxTier = 1;
@@ -102,7 +113,6 @@ public class LootboxTool : MonoBehaviour
 	[SerializeField] private List<ArtifactItem> artifactInventory = new List<ArtifactItem>();
 
 	private readonly List<ArtifactDefinition> artifactCatalog = new List<ArtifactDefinition>();
-	private const string InvalidItemDataName = "Invalid Item Data";
 	private bool inventoryOpen;
 	private Vector2 inventoryScroll = Vector2.zero;
 	private string lastOpenSummary = string.Empty;
@@ -119,11 +129,6 @@ public class LootboxTool : MonoBehaviour
 		{
 			Destroy(gameObject);
 			return;
-		}
-
-		if (itemTool == null)
-		{
-			itemTool = FindItemToolInScene();
 		}
 
 		BuildDefaultArtifactCatalog();
@@ -187,13 +192,24 @@ public class LootboxTool : MonoBehaviour
 	}
 #endif
 
-	private static ItemTool FindItemToolInScene()
+	private static string TierToRarity(int tier)
 	{
-#if UNITY_2023_1_OR_NEWER
-		return UnityEngine.Object.FindFirstObjectByType<ItemTool>();
-#else
-		return UnityEngine.Object.FindObjectOfType<ItemTool>();
-#endif
+		if (tier <= 1)
+		{
+			return RarityCommon;
+		}
+
+		if (tier == 2)
+		{
+			return RarityRare;
+		}
+
+		if (tier == 3)
+		{
+			return RarityEpic;
+		}
+
+		return RarityLegendary;
 	}
 
 	[ContextMenu("Open Default Artifact Lootbox")]
@@ -232,6 +248,95 @@ public class LootboxTool : MonoBehaviour
 		artifactInventory.Add(artifact);
 		lastOpenSummary = $"Opened a lootbox and gained {artifact.name} [{artifact.rarity}]. Inventory: {artifactInventory.Count}";
 		return artifact;
+	}
+
+	public ArtifactItem OpenSingleArtifactLootboxWithRarityWeights(float commonWeight, float rareWeight, float epicWeight, float legendaryWeight)
+	{
+		var rolledRarity = RollDropRarityByWeights(commonWeight, rareWeight, epicWeight, legendaryWeight);
+		var artifact = CreateArtifactForRarity(rolledRarity);
+		if (artifact == null)
+		{
+			lastOpenSummary = "Lootbox failed to generate an artifact.";
+			return null;
+		}
+
+		artifactInventory.Add(artifact);
+		lastOpenSummary = $"Opened a lootbox and gained {artifact.name} [{artifact.rarity}]. Inventory: {artifactInventory.Count}";
+		return artifact;
+	}
+
+	public float GetLootboxRoomLuckBonus()
+	{
+		var luckBonus = 0f;
+		for (var i = 0; i < artifactInventory.Count; i++)
+		{
+			var artifact = artifactInventory[i];
+			if (artifact == null || artifact.effectType != ArtifactEffectType.LootboxLuckBoost)
+			{
+				continue;
+			}
+
+			luckBonus += LootboxLuckBonusPerArtifact;
+		}
+
+		return Mathf.Clamp01(luckBonus);
+	}
+
+	public int ConsumeNextArtifactRoomBonusDrops()
+	{
+		var bonusDrops = 0;
+		for (var i = artifactInventory.Count - 1; i >= 0; i--)
+		{
+			var artifact = artifactInventory[i];
+			if (artifact == null || artifact.effectType != ArtifactEffectType.NextArtifactRoomBonusDrops)
+			{
+				continue;
+			}
+
+			bonusDrops += NextArtifactRoomBonusDropsPerArtifact;
+			artifactInventory.RemoveAt(i);
+		}
+
+		if (bonusDrops > 0)
+		{
+			lastOpenSummary = $"A consumable relic burst activated: +{bonusDrops} bonus artifact drop(s) this room.";
+		}
+
+		return bonusDrops;
+	}
+
+	private static string RollDropRarityByWeights(float commonWeight, float rareWeight, float epicWeight, float legendaryWeight)
+	{
+		var safeCommon = Mathf.Max(0f, commonWeight);
+		var safeRare = Mathf.Max(0f, rareWeight);
+		var safeEpic = Mathf.Max(0f, epicWeight);
+		var safeLegendary = Mathf.Max(0f, legendaryWeight);
+
+		var total = safeCommon + safeRare + safeEpic + safeLegendary;
+		if (total <= 0f)
+		{
+			return RarityCommon;
+		}
+
+		var roll = UnityEngine.Random.Range(0f, total);
+		if (roll < safeCommon)
+		{
+			return RarityCommon;
+		}
+
+		roll -= safeCommon;
+		if (roll < safeRare)
+		{
+			return RarityRare;
+		}
+
+		roll -= safeRare;
+		if (roll < safeEpic)
+		{
+			return RarityEpic;
+		}
+
+		return RarityLegendary;
 	}
 
 	public ArtifactCombatBonuses GetActiveArtifactBonuses()
@@ -315,6 +420,18 @@ public class LootboxTool : MonoBehaviour
 					break;
 				case ArtifactEffectType.BonusDamageWhenEnemyVulnerable:
 					bonuses.bonusDamageWhenEnemyVulnerable += 2;
+					break;
+				case ArtifactEffectType.HealOnDamageCardPlay:
+					bonuses.healOnDamageCardPlayTriggers += 1;
+					break;
+				case ArtifactEffectType.BlockOnHeal:
+					bonuses.blockOnHealTriggers += 1;
+					break;
+				case ArtifactEffectType.DrawOnGainEnergyCardPlay:
+					bonuses.drawOnGainEnergyCardPlay += 1;
+					break;
+				case ArtifactEffectType.BurnDamageBonus:
+					bonuses.burnDamageBonus += 1;
 					break;
 			}
 		}
@@ -426,11 +543,15 @@ public class LootboxTool : MonoBehaviour
 
 	private ArtifactItem CreateArtifactForTier(int tier)
 	{
-		var rarity = ItemTool.TierToRarity(tier);
-		var sourceItem = TryGenerateSourceItemForTier(tier, rarity);
-		if (sourceItem != null && !string.IsNullOrWhiteSpace(sourceItem.Rarity))
+		var rarity = TierToRarity(tier);
+		return CreateArtifactForRarity(rarity);
+	}
+
+	private ArtifactItem CreateArtifactForRarity(string rarity)
+	{
+		if (string.IsNullOrWhiteSpace(rarity))
 		{
-			rarity = sourceItem.Rarity;
+			rarity = RarityCommon;
 		}
 
 		var candidates = new List<ArtifactDefinition>();
@@ -460,49 +581,8 @@ public class LootboxTool : MonoBehaviour
 			name = selected.name,
 			description = selected.description,
 			rarity = selected.rarity,
-			effectType = selected.effectType,
-			sourceItemName = sourceItem != null ? sourceItem.Name : string.Empty,
-			sourceItemRarity = sourceItem != null ? sourceItem.Rarity : selected.rarity
+			effectType = selected.effectType
 		};
-	}
-
-	private GeneratedItem TryGenerateSourceItemForTier(int tier, string fallbackRarity)
-	{
-		if (!useItemToolToGenerateArtifactSourceItems)
-		{
-			return null;
-		}
-
-		if (itemTool == null)
-		{
-			itemTool = FindItemToolInScene();
-		}
-
-		if (itemTool == null)
-		{
-			return null;
-		}
-
-		var options = new ItemTool.ItemGenerationOptions
-		{
-			BaseNameOverride = string.Empty,
-			BaseNameCategoryOverride = string.Empty,
-			LootLuckOverride = Mathf.Clamp((tier - 1) * 900, 0, 2500),
-			RarityOverride = fallbackRarity
-		};
-
-		var generated = itemTool.GenerateSingleItem(options);
-		return IsValidSourceItem(generated) ? generated : null;
-	}
-
-	private static bool IsValidSourceItem(GeneratedItem item)
-	{
-		if (item == null || string.IsNullOrWhiteSpace(item.Name))
-		{
-			return false;
-		}
-
-		return !string.Equals(item.Name, InvalidItemDataName, StringComparison.OrdinalIgnoreCase);
 	}
 
 	private void BuildDefaultArtifactCatalog()
@@ -512,7 +592,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_damage_cards_plus_one",
 			name = "Sharpened Intent",
-			rarity = ItemTool.RarityRare,
+			rarity = RarityRare,
 			effectType = ArtifactEffectType.DamageCardsGainOne,
 			description = "All damage cards gain +1 in each combat."
 		});
@@ -520,7 +600,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_block_cards_plus_one",
 			name = "Guardian Rhythm",
-			rarity = ItemTool.RarityRare,
+			rarity = RarityRare,
 			effectType = ArtifactEffectType.BlockCardsGainOne,
 			description = "All block cards gain +1 in each combat."
 		});
@@ -528,7 +608,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_block_draw_one",
 			name = "Tactical Carapace",
-			rarity = ItemTool.RarityEpic,
+			rarity = RarityEpic,
 			effectType = ArtifactEffectType.DrawOnBlockCardPlay,
 			description = "When you play a block card, draw one card."
 		});
@@ -536,7 +616,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_damage_draw_one",
 			name = "Hunting Loop",
-			rarity = ItemTool.RarityEpic,
+			rarity = RarityEpic,
 			effectType = ArtifactEffectType.DrawOnDamageCardPlay,
 			description = "When you play a damage card, draw one card."
 		});
@@ -544,7 +624,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_draw_heal_three",
 			name = "Resonant Heart",
-			rarity = ItemTool.RarityLegendary,
+			rarity = RarityLegendary,
 			effectType = ArtifactEffectType.HealOnCardDraw,
 			description = "When you draw a card, heal 3."
 		});
@@ -552,7 +632,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_heal_damage_three",
 			name = "Mercybrand",
-			rarity = ItemTool.RarityLegendary,
+			rarity = RarityLegendary,
 			effectType = ArtifactEffectType.DamageOnHeal,
 			description = "When you heal, deal 3 damage."
 		});
@@ -560,7 +640,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_energy_on_damage_play",
 			name = "Arc Capacitor",
-			rarity = ItemTool.RarityRare,
+			rarity = RarityRare,
 			effectType = ArtifactEffectType.EnergyOnDamageCardPlay,
 			description = "When you play a damage card, gain 1 energy."
 		});
@@ -568,7 +648,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_energy_on_block_play",
 			name = "Defender Battery",
-			rarity = ItemTool.RarityRare,
+			rarity = RarityRare,
 			effectType = ArtifactEffectType.EnergyOnBlockCardPlay,
 			description = "When you play a block card, gain 1 energy."
 		});
@@ -576,7 +656,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_heal_on_block_play",
 			name = "Warmth Moss",
-			rarity = ItemTool.RarityRare,
+			rarity = RarityRare,
 			effectType = ArtifactEffectType.HealOnBlockCardPlay,
 			description = "When you play a block card, heal 2."
 		});
@@ -584,7 +664,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_damage_on_block_play",
 			name = "Spiked Guard",
-			rarity = ItemTool.RarityEpic,
+			rarity = RarityEpic,
 			effectType = ArtifactEffectType.DamageOnBlockCardPlay,
 			description = "When you play a block card, deal 2 damage."
 		});
@@ -592,7 +672,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_extra_draw_each_turn",
 			name = "Mind Frond",
-			rarity = ItemTool.RarityEpic,
+			rarity = RarityEpic,
 			effectType = ArtifactEffectType.ExtraDrawEachTurn,
 			description = "At the start of each turn, draw 1 additional card."
 		});
@@ -600,7 +680,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_burn_on_damage_play",
 			name = "Cinder Loop",
-			rarity = ItemTool.RarityEpic,
+			rarity = RarityEpic,
 			effectType = ArtifactEffectType.BurnOnDamageCardPlay,
 			description = "When you play a damage card, apply Burn 1."
 		});
@@ -608,7 +688,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_block_on_draw",
 			name = "Shell Script",
-			rarity = ItemTool.RarityRare,
+			rarity = RarityRare,
 			effectType = ArtifactEffectType.BlockOnCardDraw,
 			description = "When you draw a card, gain 1 block."
 		});
@@ -616,7 +696,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_block_turn_start",
 			name = "Anchor Bark",
-			rarity = ItemTool.RarityRare,
+			rarity = RarityRare,
 			effectType = ArtifactEffectType.BlockEachTurnStart,
 			description = "At the start of each turn, gain 2 block."
 		});
@@ -624,7 +704,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_heal_turn_start",
 			name = "Dew Capsule",
-			rarity = ItemTool.RarityRare,
+			rarity = RarityRare,
 			effectType = ArtifactEffectType.HealEachTurnStart,
 			description = "At the start of each turn, heal 1."
 		});
@@ -632,7 +712,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_damage_turn_start",
 			name = "Pulse Thorn",
-			rarity = ItemTool.RarityEpic,
+			rarity = RarityEpic,
 			effectType = ArtifactEffectType.DamageEachTurnStart,
 			description = "At the start of each turn, deal 2 damage."
 		});
@@ -640,7 +720,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_block_on_damage_play",
 			name = "Reactive Bark",
-			rarity = ItemTool.RarityRare,
+			rarity = RarityRare,
 			effectType = ArtifactEffectType.BlockOnDamageCardPlay,
 			description = "When you play a damage card, gain 2 block."
 		});
@@ -648,7 +728,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_energy_turn_start",
 			name = "Solar Core",
-			rarity = ItemTool.RarityEpic,
+			rarity = RarityEpic,
 			effectType = ArtifactEffectType.EnergyEachTurnStart,
 			description = "At the start of each turn, gain 1 energy."
 		});
@@ -656,7 +736,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_burn_on_block_play",
 			name = "Ashen Bulwark",
-			rarity = ItemTool.RarityEpic,
+			rarity = RarityEpic,
 			effectType = ArtifactEffectType.BurnOnBlockCardPlay,
 			description = "When you play a block card, apply Burn 1."
 		});
@@ -664,7 +744,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_draw_on_heal",
 			name = "Echo Vial",
-			rarity = ItemTool.RarityLegendary,
+			rarity = RarityLegendary,
 			effectType = ArtifactEffectType.DrawOnHeal,
 			description = "When you heal, draw 1 card."
 		});
@@ -672,7 +752,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_vulnerable_on_damage_play",
 			name = "Hunter Sigil",
-			rarity = ItemTool.RarityRare,
+			rarity = RarityRare,
 			effectType = ArtifactEffectType.VulnerableOnDamageCardPlay,
 			description = "When you play a damage card, apply Vulnerable 1."
 		});
@@ -680,7 +760,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_vulnerable_turn_start",
 			name = "Opening Gambit",
-			rarity = ItemTool.RarityEpic,
+			rarity = RarityEpic,
 			effectType = ArtifactEffectType.VulnerableEachTurnStart,
 			description = "At the start of each turn, apply Vulnerable 1."
 		});
@@ -688,7 +768,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_bonus_damage_vulnerable",
 			name = "Exposed Veins",
-			rarity = ItemTool.RarityEpic,
+			rarity = RarityEpic,
 			effectType = ArtifactEffectType.BonusDamageWhenEnemyVulnerable,
 			description = "Deal +2 damage to vulnerable enemies."
 		});
@@ -696,7 +776,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_damage_draw_predator",
 			name = "Predator Chorus",
-			rarity = ItemTool.RarityLegendary,
+			rarity = RarityLegendary,
 			effectType = ArtifactEffectType.DrawOnDamageCardPlay,
 			description = "When you play a damage card, draw one card."
 		});
@@ -704,7 +784,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_burn_storm",
 			name = "Bonefire Engine",
-			rarity = ItemTool.RarityLegendary,
+			rarity = RarityLegendary,
 			effectType = ArtifactEffectType.BurnOnDamageCardPlay,
 			description = "When you play a damage card, apply Burn 1."
 		});
@@ -712,7 +792,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_block_damage_warden",
 			name = "Warden Knot",
-			rarity = ItemTool.RarityRare,
+			rarity = RarityRare,
 			effectType = ArtifactEffectType.BlockOnDamageCardPlay,
 			description = "When you play a damage card, gain 2 block."
 		});
@@ -720,7 +800,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_heal_start_lattice",
 			name = "Lifespring Lattice",
-			rarity = ItemTool.RarityEpic,
+			rarity = RarityEpic,
 			effectType = ArtifactEffectType.HealEachTurnStart,
 			description = "At the start of each turn, heal 1."
 		});
@@ -728,7 +808,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_iron_tempest",
 			name = "Iron Tempest",
-			rarity = ItemTool.RarityRare,
+			rarity = RarityRare,
 			effectType = ArtifactEffectType.DamageCardsGainOne,
 			description = "All damage cards gain +1 in each combat."
 		});
@@ -736,7 +816,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_aegis_spore",
 			name = "Aegis Spore",
-			rarity = ItemTool.RarityRare,
+			rarity = RarityRare,
 			effectType = ArtifactEffectType.BlockCardsGainOne,
 			description = "All block cards gain +1 in each combat."
 		});
@@ -744,7 +824,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_hex_core",
 			name = "Hex Core",
-			rarity = ItemTool.RarityEpic,
+			rarity = RarityEpic,
 			effectType = ArtifactEffectType.VulnerableOnDamageCardPlay,
 			description = "When you play a damage card, apply Vulnerable 1."
 		});
@@ -752,7 +832,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_suppressor_bloom",
 			name = "Suppressor Bloom",
-			rarity = ItemTool.RarityLegendary,
+			rarity = RarityLegendary,
 			effectType = ArtifactEffectType.VulnerableEachTurnStart,
 			description = "At the start of each turn, apply Vulnerable 1."
 		});
@@ -760,7 +840,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_frenzy_engine",
 			name = "Frenzy Engine",
-			rarity = ItemTool.RarityLegendary,
+			rarity = RarityLegendary,
 			effectType = ArtifactEffectType.BonusDamageWhenEnemyVulnerable,
 			description = "Deal +2 damage to vulnerable enemies."
 		});
@@ -768,7 +848,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_ember_carapace",
 			name = "Ember Carapace",
-			rarity = ItemTool.RarityEpic,
+			rarity = RarityEpic,
 			effectType = ArtifactEffectType.BurnOnBlockCardPlay,
 			description = "When you play a block card, apply Burn 1."
 		});
@@ -776,7 +856,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_siphon_reed",
 			name = "Siphon Reed",
-			rarity = ItemTool.RarityEpic,
+			rarity = RarityEpic,
 			effectType = ArtifactEffectType.HealOnCardDraw,
 			description = "When you draw a card, heal 3."
 		});
@@ -784,7 +864,7 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_combat_dynamo",
 			name = "Combat Dynamo",
-			rarity = ItemTool.RarityLegendary,
+			rarity = RarityLegendary,
 			effectType = ArtifactEffectType.EnergyEachTurnStart,
 			description = "At the start of each turn, gain 1 energy."
 		});
@@ -792,9 +872,89 @@ public class LootboxTool : MonoBehaviour
 		{
 			id = "artifact_thicket_codex",
 			name = "Thicket Codex",
-			rarity = ItemTool.RarityRare,
+			rarity = RarityRare,
 			effectType = ArtifactEffectType.DrawOnBlockCardPlay,
 			description = "When you play a block card, draw one card."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_predator_marrow",
+			name = "Predator Marrow",
+			rarity = RarityRare,
+			effectType = ArtifactEffectType.HealOnDamageCardPlay,
+			description = "When you play a damage card, heal 1."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_photoshield_gland",
+			name = "Photoshield Gland",
+			rarity = RarityEpic,
+			effectType = ArtifactEffectType.BlockOnHeal,
+			description = "Whenever you heal, gain 2 block."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_flux_reservoir",
+			name = "Flux Reservoir",
+			rarity = RarityEpic,
+			effectType = ArtifactEffectType.DrawOnGainEnergyCardPlay,
+			description = "When you play an energy card, draw 1 card."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_cinder_organ",
+			name = "Cinder Organ",
+			rarity = RarityRare,
+			effectType = ArtifactEffectType.BurnDamageBonus,
+			description = "Burn deals +1 damage each tick."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_blood_reactor",
+			name = "Blood Reactor",
+			rarity = RarityLegendary,
+			effectType = ArtifactEffectType.HealOnDamageCardPlay,
+			description = "When you play a damage card, heal 1."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_recovery_spine",
+			name = "Recovery Spine",
+			rarity = RarityLegendary,
+			effectType = ArtifactEffectType.BlockOnHeal,
+			description = "Whenever you heal, gain 2 block."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_spark_archive",
+			name = "Spark Archive",
+			rarity = RarityLegendary,
+			effectType = ArtifactEffectType.DrawOnGainEnergyCardPlay,
+			description = "When you play an energy card, draw 1 card."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_pyre_crown",
+			name = "Pyre Crown",
+			rarity = RarityLegendary,
+			effectType = ArtifactEffectType.BurnDamageBonus,
+			description = "Burn deals +1 damage each tick."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_lucky_spores",
+			name = "Lucky Spores",
+			rarity = RarityRare,
+			effectType = ArtifactEffectType.LootboxLuckBoost,
+			description = "Artifact rooms roll with increased luck for higher-rarity drops."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_relic_seed_pod",
+			name = "Relic Seed Pod",
+			rarity = RarityEpic,
+			effectType = ArtifactEffectType.NextArtifactRoomBonusDrops,
+			description = "Next artifact room grants +2 extra artifacts, then this relic is consumed."
 		});
 	}
 
@@ -843,15 +1003,11 @@ public class LootboxTool : MonoBehaviour
 			}
 
 			var y = 4f + i * 62f;
-			var hasValidSourceName = !string.IsNullOrWhiteSpace(artifact.sourceItemName)
-				&& !string.Equals(artifact.sourceItemName, InvalidItemDataName, StringComparison.OrdinalIgnoreCase);
-			var sourceText = !hasValidSourceName
-				? string.Empty
-				: $" | Source: {artifact.sourceItemName}";
-			var rowText = $"#{i + 1} [{artifact.rarity}] {artifact.name}{sourceText}\n{artifact.description}";
+			var rowText = $"#{i + 1} [{artifact.rarity}] {artifact.name}\n{artifact.description}";
 			GUI.Box(new Rect(4f, y, viewRect.width - 8f, 56f), rowText);
 		}
 
 		GUI.EndScrollView();
 	}
 }
+
