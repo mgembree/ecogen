@@ -48,9 +48,32 @@ public class CardCombatGameState : MonoBehaviour
 	[SerializeField] private float bossHpMultiplier = 1.8f;
 	[SerializeField] private float bossDamageMultiplier = 1.5f;
 
+	[Header("Difficulty")]
+	[SerializeField, Range(1f, 3f)] private float enemyHpDifficultyMultiplier = 1.4f;
+	[SerializeField, Range(1f, 3f)] private float enemyDamageDifficultyMultiplier = 1.45f;
+	[SerializeField, Min(0)] private int flatEnemyHpDifficultyBonus = 6;
+	[SerializeField, Min(0)] private int flatEnemyDamageDifficultyBonus = 2;
+	[SerializeField, Range(0.5f, 0.95f)] private float enemyMinDamageRatio = 0.65f;
+
+	[Header("Enemy AI")]
+	[SerializeField, Range(0f, 1f)] private float enemyActionAttackWeight = 0.55f;
+	[SerializeField, Range(0f, 1f)] private float enemyActionDefendWeight = 0.25f;
+	[SerializeField, Range(0f, 1f)] private float enemyActionBuffWeight = 0.2f;
+	[SerializeField, Min(0)] private int enemyDefendBaseBlock = 4;
+	[SerializeField, Min(0)] private int enemyBuffDamagePerStack = 1;
+	[SerializeField, Min(1)] private int enemyMaxBuffStacks = 6;
+
+	[Header("Status Effects")]
+	[SerializeField, Range(1f, 3f)] private float enemyVulnerableDamageMultiplier = 1.5f;
+
 	[Header("Danger Progression")]
-	[SerializeField] private float dangerPerDepthStep = 1.2f;
-	[SerializeField] private float occupantDangerVarianceMax = 0.4f;
+	[SerializeField] private float dangerPerDepthStep = 1.45f;
+	[SerializeField] private float occupantDangerVarianceMax = 0.65f;
+
+	[Header("Early Encounter Ramp")]
+	[SerializeField, Min(0)] private int earlyEncounterRampCount = 6;
+	[SerializeField] private float earlyEncounterHpRamp = 3f;
+	[SerializeField] private float earlyEncounterDamageRamp = 0.9f;
 
 	[Header("Quick UI")]
 	[SerializeField] private bool useDebugOnGui = true;
@@ -59,6 +82,10 @@ public class CardCombatGameState : MonoBehaviour
 	[SerializeField] private Color lowDangerButtonColor = new Color(0.5f, 0.85f, 0.45f, 1f);
 	[SerializeField] private Color mediumDangerButtonColor = new Color(0.93f, 0.82f, 0.35f, 1f);
 	[SerializeField] private Color highDangerButtonColor = new Color(0.9f, 0.38f, 0.3f, 1f);
+
+	[Header("Map Highlight")]
+	[SerializeField] private bool highlightCurrentRoomOnMap = true;
+	[SerializeField] private Color currentRoomMapTintColor = new Color(0.2f, 0.9f, 0.2f, 1f);
 
 	[Header("Lootbox Rooms")]
 	[SerializeField, Range(0f, 1f)] private float lootboxRoomChance = 0.2f;
@@ -99,6 +126,7 @@ public class CardCombatGameState : MonoBehaviour
 	private int fightEnergyPerTurnBonus;
 	private int enemyBurnDamagePerTurn;
 	private int enemyBurnTurnsRemaining;
+	private int enemyVulnerableTurnsRemaining;
 	private int artifactDamageCardBonus;
 	private int artifactBlockCardBonus;
 	private int artifactDrawCardsOnBlockCardPlay;
@@ -113,6 +141,15 @@ public class CardCombatGameState : MonoBehaviour
 	private int artifactBurnOnDamageCardPlay;
 	private int artifactBlockOnCardDrawAmount;
 	private int artifactBlockAtTurnStartAmount;
+	private int artifactHealAtTurnStartAmount;
+	private int artifactDamageAtTurnStartAmount;
+	private int artifactBlockOnDamageCardPlayAmount;
+	private int artifactEnergyEachTurnStartBonus;
+	private int artifactBurnOnBlockCardPlay;
+	private int artifactDrawOnHealAmount;
+	private int artifactVulnerableOnDamageCardPlay;
+	private int artifactVulnerableAtTurnStartAmount;
+	private int artifactBonusDamageVsVulnerable;
 
 	private enum RunPhase
 	{
@@ -149,7 +186,28 @@ public class CardCombatGameState : MonoBehaviour
 		AnimalBrain,
 		PredatoryMomentum,
 		RhythmicHeartbeat,
-		MetabolicSurge
+		MetabolicSurge,
+		BloodrootSap,
+		BastionBloom,
+		EmberCircuit,
+		WildOverclock,
+		PredatorsMark,
+		LeechingVine,
+		ThornguardPulse,
+		ForesightBurst,
+		RuinSpores,
+		IronBastion,
+		OverclockedReflex,
+		Plaguebrand,
+		BloodFrenzy,
+		BoneWard
+	}
+
+	private enum EnemyActionType
+	{
+		Attack,
+		Defend,
+		Buff
 	}
 
 	private class Card
@@ -184,6 +242,9 @@ public class CardCombatGameState : MonoBehaviour
 		public int currentHp;
 		public int minDamage;
 		public int maxDamage;
+		public int currentBlock;
+		public int damageBuff;
+		public string lastActionSummary;
 	}
 
 	private class RewardDrop
@@ -272,6 +333,90 @@ public class CardCombatGameState : MonoBehaviour
 			enhancement = CardEnhancement.MetabolicSurge,
 			name = "Metabolic Surge",
 			description = "For this fight, gain +1 additional energy at the start of each turn when this card is played."
+		},
+		new RewardDrop
+		{
+			enhancement = CardEnhancement.BloodrootSap,
+			name = "Bloodroot Sap",
+			description = "Heal 2 HP when this card is played."
+		},
+		new RewardDrop
+		{
+			enhancement = CardEnhancement.BastionBloom,
+			name = "Bastion Bloom",
+			description = "Gain 3 block when this card is played, or 5 block if this is a block card."
+		},
+		new RewardDrop
+		{
+			enhancement = CardEnhancement.EmberCircuit,
+			name = "Ember Circuit",
+			description = "Apply Burn 1 and draw 1 card when this card is played."
+		},
+		new RewardDrop
+		{
+			enhancement = CardEnhancement.WildOverclock,
+			name = "Wild Overclock",
+			description = "Gain 1 energy and +1 damage for this fight when this card is played."
+		},
+		new RewardDrop
+		{
+			enhancement = CardEnhancement.PredatorsMark,
+			name = "Predator's Mark",
+			description = "Apply Vulnerable 2 to the enemy when this card is played."
+		},
+		new RewardDrop
+		{
+			enhancement = CardEnhancement.LeechingVine,
+			name = "Leeching Vine",
+			description = "Deal 2 damage and heal 2 HP when this card is played."
+		},
+		new RewardDrop
+		{
+			enhancement = CardEnhancement.ThornguardPulse,
+			name = "Thornguard Pulse",
+			description = "Gain 4 block and draw 1 card when this card is played."
+		},
+		new RewardDrop
+		{
+			enhancement = CardEnhancement.ForesightBurst,
+			name = "Foresight Burst",
+			description = "Draw 2 cards when this card is played."
+		},
+		new RewardDrop
+		{
+			enhancement = CardEnhancement.RuinSpores,
+			name = "Ruin Spores",
+			description = "If the enemy is vulnerable, deal 5 damage. Otherwise apply Vulnerable 1."
+		},
+		new RewardDrop
+		{
+			enhancement = CardEnhancement.IronBastion,
+			name = "Iron Bastion",
+			description = "Gain 6 block and 1 energy when this card is played."
+		},
+		new RewardDrop
+		{
+			enhancement = CardEnhancement.OverclockedReflex,
+			name = "Overclocked Reflex",
+			description = "Draw 1 card and gain 1 energy when this card is played."
+		},
+		new RewardDrop
+		{
+			enhancement = CardEnhancement.Plaguebrand,
+			name = "Plaguebrand",
+			description = "Apply Burn 2 and Vulnerable 1 when this card is played."
+		},
+		new RewardDrop
+		{
+			enhancement = CardEnhancement.BloodFrenzy,
+			name = "Blood Frenzy",
+			description = "Deal 6 damage if enemy HP is 50% or less, otherwise deal 3 damage."
+		},
+		new RewardDrop
+		{
+			enhancement = CardEnhancement.BoneWard,
+			name = "Bone Ward",
+			description = "Gain 8 block. If enemy is vulnerable, draw 1 card."
 		}
 	};
 
@@ -358,6 +503,7 @@ public class CardCombatGameState : MonoBehaviour
 			lootboxRoomIds.Clear();
 			lootboxOpenedForCurrentRoom = false;
 			lootboxRoomStatusMessage = string.Empty;
+			RefreshCurrentRoomMapHighlight();
 			return;
 		}
 
@@ -390,6 +536,7 @@ public class CardCombatGameState : MonoBehaviour
 		AssignLootboxRooms();
 		phase = RunPhase.MapSelection;
 		RefreshRoomChoices();
+		RefreshCurrentRoomMapHighlight();
 	}
 
 	private int FindStartRoomId()
@@ -587,11 +734,11 @@ public class CardCombatGameState : MonoBehaviour
 		var nonStartDepth = Mathf.Max(0, depth - 1);
 		var depthStep = Mathf.Max(0.25f, dangerPerDepthStep);
 
-		// Keep depth progression dominant so deeper rooms remain more dangerous.
-		var varianceCap = Mathf.Clamp(occupantDangerVarianceMax, 0f, depthStep * 0.9f);
+		var varianceCap = Mathf.Clamp(occupantDangerVarianceMax, 0f, Mathf.Max(0.25f, depthStep) * 1.25f);
 		var depthDanger = 1f + nonStartDepth * depthStep;
-		var occupantDanger = CalculateRoomDanger(room);
-		var normalizedOccupantDanger = Mathf.Clamp01(Mathf.Log10(1f + occupantDanger));
+		var occupantDanger = Mathf.Max(1f, CalculateRoomDanger(room));
+		var occupantLog = Mathf.Log(1f + occupantDanger, 2f);
+		var normalizedOccupantDanger = Mathf.InverseLerp(1f, 6f, occupantLog);
 
 		return depthDanger + normalizedOccupantDanger * varianceCap;
 	}
@@ -702,6 +849,34 @@ public class CardCombatGameState : MonoBehaviour
 				return "Rhythmic Heartbeat";
 			case CardEnhancement.MetabolicSurge:
 				return "Metabolic Surge";
+			case CardEnhancement.BloodrootSap:
+				return "Bloodroot Sap";
+			case CardEnhancement.BastionBloom:
+				return "Bastion Bloom";
+			case CardEnhancement.EmberCircuit:
+				return "Ember Circuit";
+			case CardEnhancement.WildOverclock:
+				return "Wild Overclock";
+			case CardEnhancement.PredatorsMark:
+				return "Predator's Mark";
+			case CardEnhancement.LeechingVine:
+				return "Leeching Vine";
+			case CardEnhancement.ThornguardPulse:
+				return "Thornguard Pulse";
+			case CardEnhancement.ForesightBurst:
+				return "Foresight Burst";
+			case CardEnhancement.RuinSpores:
+				return "Ruin Spores";
+			case CardEnhancement.IronBastion:
+				return "Iron Bastion";
+			case CardEnhancement.OverclockedReflex:
+				return "Overclocked Reflex";
+			case CardEnhancement.Plaguebrand:
+				return "Plaguebrand";
+			case CardEnhancement.BloodFrenzy:
+				return "Blood Frenzy";
+			case CardEnhancement.BoneWard:
+				return "Bone Ward";
 			default:
 				return "None";
 		}
@@ -812,6 +987,7 @@ public class CardCombatGameState : MonoBehaviour
 		}
 
 		var neighbors = ecosystemGenerator.GetNeighborRoomIds(currentRoomId);
+		var clearedLootboxNeighbors = new List<int>();
 		for (var i = 0; i < neighbors.Length; i++)
 		{
 			var roomId = neighbors[i];
@@ -823,6 +999,21 @@ public class CardCombatGameState : MonoBehaviour
 			if (!clearedRooms.Contains(roomId))
 			{
 				availableRoomChoices.Add(roomId);
+				continue;
+			}
+
+			if (IsLootboxRoom(roomId))
+			{
+				clearedLootboxNeighbors.Add(roomId);
+			}
+		}
+
+		for (var i = 0; i < clearedLootboxNeighbors.Count; i++)
+		{
+			var roomId = clearedLootboxNeighbors[i];
+			if (!availableRoomChoices.Contains(roomId))
+			{
+				availableRoomChoices.Add(roomId);
 			}
 		}
 
@@ -830,9 +1021,10 @@ public class CardCombatGameState : MonoBehaviour
 		{
 			for (var i = 0; i < neighbors.Length; i++)
 			{
-				if (neighbors[i] != currentRoomId)
+				var roomId = neighbors[i];
+				if (roomId != currentRoomId && !availableRoomChoices.Contains(roomId))
 				{
-					availableRoomChoices.Add(neighbors[i]);
+					availableRoomChoices.Add(roomId);
 				}
 			}
 		}
@@ -841,6 +1033,22 @@ public class CardCombatGameState : MonoBehaviour
 	private bool IsLootboxRoom(int roomId)
 	{
 		return lootboxRoomIds.Contains(roomId);
+	}
+
+	private void RefreshCurrentRoomMapHighlight()
+	{
+		if (ecosystemGenerator == null)
+		{
+			return;
+		}
+
+		if (!highlightCurrentRoomOnMap)
+		{
+			ecosystemGenerator.HighlightRoomById(-1, currentRoomMapTintColor);
+			return;
+		}
+
+		ecosystemGenerator.HighlightRoomById(currentRoomId, currentRoomMapTintColor);
 	}
 
 	private void EnsureNavigationStateIsValid()
@@ -863,6 +1071,7 @@ public class CardCombatGameState : MonoBehaviour
 			availableRoomChoices.Clear();
 			roomDepthById.Clear();
 			maxDepthFromStart = 1;
+			RefreshCurrentRoomMapHighlight();
 			return;
 		}
 
@@ -874,6 +1083,7 @@ public class CardCombatGameState : MonoBehaviour
 
 		if (GetRoomById(currentRoomId) != null)
 		{
+			RefreshCurrentRoomMapHighlight();
 			return;
 		}
 
@@ -888,6 +1098,7 @@ public class CardCombatGameState : MonoBehaviour
 			currentRoomId = recoveredStart;
 			clearedRooms.Add(currentRoomId);
 			RefreshRoomChoices();
+			RefreshCurrentRoomMapHighlight();
 		}
 	}
 
@@ -916,6 +1127,7 @@ public class CardCombatGameState : MonoBehaviour
 			}
 
 			RefreshRoomChoices();
+			RefreshCurrentRoomMapHighlight();
 			neighbors = ecosystemGenerator.GetNeighborRoomIds(currentRoomId);
 		}
 
@@ -941,6 +1153,7 @@ public class CardCombatGameState : MonoBehaviour
 		}
 
 		currentRoomId = roomId;
+		RefreshCurrentRoomMapHighlight();
 		StartSelectedRoom();
 	}
 
@@ -1087,16 +1300,31 @@ public class CardCombatGameState : MonoBehaviour
 		}
 
 		var enemyName = GetEncounterEnemyName(room, isBoss);
-		var enemyHp = Mathf.RoundToInt(baseEnemyHp + danger * hpPerDanger);
-		var maxDamage = Mathf.Max(maxEnemyDamageFloor, Mathf.RoundToInt(minEnemyDamage + danger * damagePerDanger));
+		var safeDanger = Mathf.Max(1f, danger);
+		var hpDangerScale = Mathf.Pow(safeDanger, 0.85f) - 1f;
+		var damageDangerScale = Mathf.Pow(safeDanger, 0.75f) - 1f;
+		var enemyHp = Mathf.RoundToInt(baseEnemyHp + hpDangerScale * hpPerDanger);
+		var maxDamage = Mathf.Max(maxEnemyDamageFloor, Mathf.RoundToInt(minEnemyDamage + damageDangerScale * damagePerDanger));
 
 		if (isBoss)
 		{
 			enemyHp = Mathf.RoundToInt(enemyHp * Mathf.Max(1f, bossHpMultiplier));
 			maxDamage = Mathf.RoundToInt(maxDamage * Mathf.Max(1f, bossDamageMultiplier));
 		}
+		else
+		{
+			var encounterRampCount = Mathf.Min(GetClearedNonBossEncounterCount(), Mathf.Max(0, earlyEncounterRampCount));
+			if (encounterRampCount > 0)
+			{
+				enemyHp += Mathf.RoundToInt(encounterRampCount * Mathf.Max(0f, earlyEncounterHpRamp));
+				maxDamage += Mathf.RoundToInt(encounterRampCount * Mathf.Max(0f, earlyEncounterDamageRamp));
+			}
+		}
 
-		var minDamage = Mathf.Max(1, Mathf.RoundToInt(maxDamage * 0.5f));
+		enemyHp = Mathf.RoundToInt(enemyHp * Mathf.Max(1f, enemyHpDifficultyMultiplier)) + Mathf.Max(0, flatEnemyHpDifficultyBonus);
+		maxDamage = Mathf.RoundToInt(maxDamage * Mathf.Max(1f, enemyDamageDifficultyMultiplier)) + Mathf.Max(0, flatEnemyDamageDifficultyBonus);
+
+		var minDamage = Mathf.Max(1, Mathf.RoundToInt(maxDamage * Mathf.Clamp(enemyMinDamageRatio, 0.5f, 0.95f)));
 		maxDamage = Mathf.Max(minDamage, maxDamage);
 
 		return new Encounter
@@ -1109,8 +1337,40 @@ public class CardCombatGameState : MonoBehaviour
 			maxHp = enemyHp,
 			currentHp = enemyHp,
 			minDamage = minDamage,
-			maxDamage = maxDamage
+			maxDamage = maxDamage,
+			currentBlock = 0,
+			damageBuff = 0,
+			lastActionSummary = "Preparing attack"
 		};
+	}
+
+	private int GetClearedNonBossEncounterCount()
+	{
+		if (ecosystemGenerator == null || clearedRooms.Count == 0)
+		{
+			return 0;
+		}
+
+		var count = 0;
+		foreach (var roomId in clearedRooms)
+		{
+			var room = GetRoomById(roomId);
+			if (room == null)
+			{
+				continue;
+			}
+
+			if (string.Equals(room.label, "START", StringComparison.OrdinalIgnoreCase)
+				|| IsGoalRoom(room)
+				|| IsLootboxRoom(room.id))
+			{
+				continue;
+			}
+
+			count++;
+		}
+
+		return count;
 	}
 
 	private float CalculateRoomDanger(dungeonGenerator.RoomData room)
@@ -1202,7 +1462,19 @@ public class CardCombatGameState : MonoBehaviour
 
 		phase = RunPhase.PlayerTurn;
 		playerBlock = 0;
-		playerEnergy = Mathf.Max(0, energyPerTurn + fightEnergyPerTurnBonus);
+		playerEnergy = Mathf.Max(0, energyPerTurn + fightEnergyPerTurnBonus + artifactEnergyEachTurnStartBonus);
+		if (artifactVulnerableAtTurnStartAmount > 0)
+		{
+			ApplyVulnerableToEnemy(artifactVulnerableAtTurnStartAmount);
+		}
+		if (artifactHealAtTurnStartAmount > 0)
+		{
+			HealPlayer(artifactHealAtTurnStartAmount, true);
+		}
+		if (artifactDamageAtTurnStartAmount > 0)
+		{
+			DealDamageToEnemy(artifactDamageAtTurnStartAmount);
+		}
 		if (artifactBlockAtTurnStartAmount > 0)
 		{
 			GainBlock(artifactBlockAtTurnStartAmount);
@@ -1248,6 +1520,48 @@ public class CardCombatGameState : MonoBehaviour
 		TryDrawSpecificCardFromPile(drawPile, targetEffect);
 	}
 
+	private void ApplyVulnerableToEnemy(int turns)
+	{
+		if (currentEncounter == null || turns <= 0)
+		{
+			return;
+		}
+
+		enemyVulnerableTurnsRemaining += turns;
+	}
+
+	private bool IsEnemyVulnerable()
+	{
+		return currentEncounter != null && enemyVulnerableTurnsRemaining > 0;
+	}
+
+	private string GetEnemyStatusText()
+	{
+		var statuses = new List<string>();
+		if (currentEncounter != null && currentEncounter.damageBuff > 0)
+		{
+			statuses.Add($"Enrage +{currentEncounter.damageBuff}");
+		}
+
+		if (enemyBurnTurnsRemaining > 0 && enemyBurnDamagePerTurn > 0)
+		{
+			statuses.Add($"Burn {enemyBurnDamagePerTurn} ({enemyBurnTurnsRemaining}t)");
+		}
+
+		if (enemyVulnerableTurnsRemaining > 0)
+		{
+			var bonusPercent = Mathf.RoundToInt((Mathf.Max(1f, enemyVulnerableDamageMultiplier) - 1f) * 100f);
+			statuses.Add($"Vulnerable +{bonusPercent}% ({enemyVulnerableTurnsRemaining}t)");
+		}
+
+		if (statuses.Count == 0)
+		{
+			return "None";
+		}
+
+		return string.Join(" | ", statuses);
+	}
+
 	private bool TryDrawSpecificCardFromPile(List<Card> sourcePile, CardEffect targetEffect)
 	{
 		for (var i = sourcePile.Count - 1; i >= 0; i--)
@@ -1275,7 +1589,23 @@ public class CardCombatGameState : MonoBehaviour
 		}
 
 		var totalDamage = Mathf.Max(0, amount + fightDamageBonus);
-		currentEncounter.currentHp -= totalDamage;
+		if (IsEnemyVulnerable())
+		{
+			totalDamage += Mathf.Max(0, artifactBonusDamageVsVulnerable);
+			totalDamage = Mathf.RoundToInt(totalDamage * Mathf.Max(1f, enemyVulnerableDamageMultiplier));
+		}
+
+		if (currentEncounter.currentBlock > 0)
+		{
+			var absorbed = Mathf.Min(totalDamage, currentEncounter.currentBlock);
+			currentEncounter.currentBlock -= absorbed;
+			totalDamage -= absorbed;
+		}
+
+		if (totalDamage > 0)
+		{
+			currentEncounter.currentHp -= totalDamage;
+		}
 	}
 
 	private void GainBlock(int amount)
@@ -1319,6 +1649,11 @@ public class CardCombatGameState : MonoBehaviour
 			DealDamageToEnemy(artifactDamageOnHealAmount);
 		}
 
+		if (healedAmount > 0 && artifactDrawOnHealAmount > 0)
+		{
+			DrawCards(artifactDrawOnHealAmount);
+		}
+
 		return healedAmount;
 	}
 
@@ -1338,6 +1673,15 @@ public class CardCombatGameState : MonoBehaviour
 		artifactBurnOnDamageCardPlay = 0;
 		artifactBlockOnCardDrawAmount = 0;
 		artifactBlockAtTurnStartAmount = 0;
+		artifactHealAtTurnStartAmount = 0;
+		artifactDamageAtTurnStartAmount = 0;
+		artifactBlockOnDamageCardPlayAmount = 0;
+		artifactEnergyEachTurnStartBonus = 0;
+		artifactBurnOnBlockCardPlay = 0;
+		artifactDrawOnHealAmount = 0;
+		artifactVulnerableOnDamageCardPlay = 0;
+		artifactVulnerableAtTurnStartAmount = 0;
+		artifactBonusDamageVsVulnerable = 0;
 
 		if (lootboxTool == null)
 		{
@@ -1364,6 +1708,15 @@ public class CardCombatGameState : MonoBehaviour
 		artifactBurnOnDamageCardPlay = artifactBonuses.burnOnDamageCardPlay;
 		artifactBlockOnCardDrawAmount = artifactBonuses.blockOnCardDraw;
 		artifactBlockAtTurnStartAmount = artifactBonuses.blockEachTurnStart * 2;
+		artifactHealAtTurnStartAmount = artifactBonuses.healEachTurnStart;
+		artifactDamageAtTurnStartAmount = artifactBonuses.damageEachTurnStart * 2;
+		artifactBlockOnDamageCardPlayAmount = artifactBonuses.blockOnDamageCardPlay * 2;
+		artifactEnergyEachTurnStartBonus = artifactBonuses.energyEachTurnStart;
+		artifactBurnOnBlockCardPlay = artifactBonuses.burnOnBlockCardPlay;
+		artifactDrawOnHealAmount = artifactBonuses.drawOnHeal;
+		artifactVulnerableOnDamageCardPlay = artifactBonuses.vulnerableOnDamageCardPlay;
+		artifactVulnerableAtTurnStartAmount = artifactBonuses.vulnerableEachTurnStart;
+		artifactBonusDamageVsVulnerable = artifactBonuses.bonusDamageWhenEnemyVulnerable;
 	}
 
 	private void ReshuffleDiscardIntoDrawPile()
@@ -1437,7 +1790,15 @@ public class CardCombatGameState : MonoBehaviour
 		switch (card.effect)
 		{
 			case CardEffect.Damage:
+				if (artifactVulnerableOnDamageCardPlay > 0)
+				{
+					ApplyVulnerableToEnemy(artifactVulnerableOnDamageCardPlay);
+				}
 				DealDamageToEnemy(card.value + artifactDamageCardBonus);
+				if (artifactBlockOnDamageCardPlayAmount > 0)
+				{
+					GainBlock(artifactBlockOnDamageCardPlayAmount);
+				}
 				if (artifactBurnOnDamageCardPlay > 0)
 				{
 					enemyBurnDamagePerTurn += artifactBurnOnDamageCardPlay;
@@ -1469,6 +1830,11 @@ public class CardCombatGameState : MonoBehaviour
 				if (artifactDamageOnBlockCardPlayAmount > 0)
 				{
 					DealDamageToEnemy(artifactDamageOnBlockCardPlayAmount);
+				}
+				if (artifactBurnOnBlockCardPlay > 0)
+				{
+					enemyBurnDamagePerTurn += artifactBurnOnBlockCardPlay;
+					enemyBurnTurnsRemaining += artifactBurnOnBlockCardPlay;
 				}
 				break;
 			case CardEffect.Heal:
@@ -1523,6 +1889,75 @@ public class CardCombatGameState : MonoBehaviour
 			case CardEnhancement.MetabolicSurge:
 				fightEnergyPerTurnBonus += 1;
 				break;
+			case CardEnhancement.BloodrootSap:
+				HealPlayer(2, true);
+				break;
+			case CardEnhancement.BastionBloom:
+				GainBlock(card.effect == CardEffect.Block ? 5 : 3);
+				break;
+			case CardEnhancement.EmberCircuit:
+				enemyBurnDamagePerTurn += 1;
+				enemyBurnTurnsRemaining += 1;
+				DrawCards(1);
+				break;
+			case CardEnhancement.WildOverclock:
+				playerEnergy += 1;
+				fightDamageBonus += 1;
+				break;
+			case CardEnhancement.PredatorsMark:
+				ApplyVulnerableToEnemy(2);
+				break;
+			case CardEnhancement.LeechingVine:
+				DealDamageToEnemy(2);
+				HealPlayer(2, true);
+				break;
+			case CardEnhancement.ThornguardPulse:
+				GainBlock(4);
+				DrawCards(1);
+				break;
+			case CardEnhancement.ForesightBurst:
+				DrawCards(2);
+				break;
+			case CardEnhancement.RuinSpores:
+				if (IsEnemyVulnerable())
+				{
+					DealDamageToEnemy(5);
+				}
+				else
+				{
+					ApplyVulnerableToEnemy(1);
+				}
+				break;
+			case CardEnhancement.IronBastion:
+				GainBlock(6);
+				playerEnergy += 1;
+				break;
+			case CardEnhancement.OverclockedReflex:
+				DrawCards(1);
+				playerEnergy += 1;
+				break;
+			case CardEnhancement.Plaguebrand:
+				enemyBurnDamagePerTurn += 2;
+				enemyBurnTurnsRemaining += 2;
+				ApplyVulnerableToEnemy(1);
+				break;
+			case CardEnhancement.BloodFrenzy:
+				if (currentEncounter != null && currentEncounter.currentHp <= Mathf.RoundToInt(currentEncounter.maxHp * 0.5f))
+				{
+					DealDamageToEnemy(6);
+				}
+				else
+				{
+					DealDamageToEnemy(3);
+				}
+				break;
+			case CardEnhancement.BoneWard:
+				GainBlock(8);
+				if (IsEnemyVulnerable())
+				{
+					DrawCards(1);
+				}
+				break;
 			default:
 				break;
 		}
@@ -1560,14 +1995,144 @@ public class CardCombatGameState : MonoBehaviour
 			return;
 		}
 
-		lastEnemyRoll = UnityEngine.Random.Range(currentEncounter.minDamage, currentEncounter.maxDamage + 1);
-		var damageAfterBlock = Mathf.Max(0, lastEnemyRoll - playerBlock);
-		playerHp -= damageAfterBlock;
+		var actionType = RollEnemyActionType(currentEncounter);
+		switch (actionType)
+		{
+			case EnemyActionType.Defend:
+				ExecuteEnemyDefend(currentEncounter);
+				break;
+			case EnemyActionType.Buff:
+				ExecuteEnemyBuff(currentEncounter);
+				break;
+			default:
+				ExecuteEnemyAttack(currentEncounter, 1f, "Attack");
+				break;
+		}
+
+		if (enemyVulnerableTurnsRemaining > 0)
+		{
+			enemyVulnerableTurnsRemaining = Mathf.Max(0, enemyVulnerableTurnsRemaining - 1);
+		}
+
 		if (playerHp <= 0)
 		{
 			playerHp = 0;
 			phase = RunPhase.Defeat;
 		}
+	}
+
+	private EnemyActionType RollEnemyActionType(Encounter encounter)
+	{
+		if (encounter == null)
+		{
+			return EnemyActionType.Attack;
+		}
+
+		var attackWeight = Mathf.Max(0f, enemyActionAttackWeight);
+		var defendWeight = Mathf.Max(0f, enemyActionDefendWeight);
+		var buffWeight = Mathf.Max(0f, enemyActionBuffWeight);
+
+		if (encounter.currentHp <= Mathf.RoundToInt(encounter.maxHp * 0.45f))
+		{
+			defendWeight += 0.2f;
+		}
+
+		var maxBuffAmount = Mathf.Max(1, enemyMaxBuffStacks * Mathf.Max(1, enemyBuffDamagePerStack));
+		if (encounter.damageBuff >= maxBuffAmount)
+		{
+			attackWeight += 0.2f;
+			buffWeight *= 0.25f;
+		}
+		else
+		{
+			buffWeight += 0.1f;
+		}
+
+		if (encounter.isBoss)
+		{
+			attackWeight += 0.12f;
+			buffWeight += 0.08f;
+		}
+
+		var totalWeight = attackWeight + defendWeight + buffWeight;
+		if (totalWeight <= 0f)
+		{
+			return EnemyActionType.Attack;
+		}
+
+		var roll = UnityEngine.Random.Range(0f, totalWeight);
+		if (roll < attackWeight)
+		{
+			return EnemyActionType.Attack;
+		}
+
+		roll -= attackWeight;
+		if (roll < defendWeight)
+		{
+			return EnemyActionType.Defend;
+		}
+
+		return EnemyActionType.Buff;
+	}
+
+	private void ExecuteEnemyAttack(Encounter encounter, float attackScale, string actionLabel)
+	{
+		if (encounter == null)
+		{
+			return;
+		}
+
+		var baseRoll = UnityEngine.Random.Range(encounter.minDamage, encounter.maxDamage + 1);
+		var scaledRoll = Mathf.RoundToInt(baseRoll * Mathf.Max(0.35f, attackScale));
+		lastEnemyRoll = Mathf.Max(0, scaledRoll + Mathf.Max(0, encounter.damageBuff));
+		var damageAfterBlock = Mathf.Max(0, lastEnemyRoll - playerBlock);
+		playerHp -= damageAfterBlock;
+		encounter.lastActionSummary = $"{actionLabel} for {lastEnemyRoll}";
+	}
+
+	private void ExecuteEnemyDefend(Encounter encounter)
+	{
+		if (encounter == null)
+		{
+			return;
+		}
+
+		lastEnemyRoll = 0;
+		var rangeBlock = Mathf.RoundToInt(Mathf.Lerp(encounter.minDamage, encounter.maxDamage, 0.75f));
+		var dangerBlock = Mathf.RoundToInt(encounter.dangerRating * 0.6f);
+		var blockGain = Mathf.Max(2, rangeBlock + Mathf.Max(0, enemyDefendBaseBlock) + dangerBlock);
+		if (encounter.isBoss)
+		{
+			blockGain += 3;
+		}
+
+		encounter.currentBlock += blockGain;
+		encounter.lastActionSummary = $"Defend gained {blockGain} block";
+	}
+
+	private void ExecuteEnemyBuff(Encounter encounter)
+	{
+		if (encounter == null)
+		{
+			return;
+		}
+
+		lastEnemyRoll = 0;
+		var perStack = Mathf.Max(1, enemyBuffDamagePerStack);
+		var maxBuffAmount = Mathf.Max(perStack, enemyMaxBuffStacks * perStack);
+		var previous = encounter.damageBuff;
+		encounter.damageBuff = Mathf.Min(maxBuffAmount, encounter.damageBuff + perStack);
+		var gained = Mathf.Max(0, encounter.damageBuff - previous);
+
+		if (encounter.isBoss)
+		{
+			ExecuteEnemyAttack(encounter, 0.7f, gained > 0 ? $"Enrage +{gained}, then strike" : "Strike");
+			return;
+		}
+
+		encounter.lastActionSummary = gained > 0
+			? $"Enrage +{gained} damage"
+			: "Enrage is already at max";
 	}
 
 	private bool ApplyEnemyStartOfTurnEffects()
@@ -1600,6 +2165,7 @@ public class CardCombatGameState : MonoBehaviour
 		fightEnergyPerTurnBonus = 0;
 		enemyBurnDamagePerTurn = 0;
 		enemyBurnTurnsRemaining = 0;
+		enemyVulnerableTurnsRemaining = 0;
 	}
 
 	private void DiscardHand()
@@ -1761,6 +2327,7 @@ public class CardCombatGameState : MonoBehaviour
 	private void DrawMapSelection()
 	{
 		EnsureNavigationStateIsValid();
+		RefreshCurrentRoomMapHighlight();
 		if (currentRoomId < 0)
 		{
 			GUI.Box(new Rect(16f, 86f, 520f, 70f), "No map data is available. Generate a map to continue.");
@@ -1967,17 +2534,18 @@ public class CardCombatGameState : MonoBehaviour
 		}
 
 		var enemyLabel = currentEncounter.isBoss ? "Boss" : "Enemy";
+		var enemyStatusText = GetEnemyStatusText();
 		GUI.Box(
 			new Rect(16f, 86f, 520f, 84f),
-			$"{enemyLabel}: {currentEncounter.enemyName}\nHP: {currentEncounter.currentHp}/{currentEncounter.maxHp}\nDamage: {currentEncounter.minDamage}-{currentEncounter.maxDamage} (Danger {currentEncounter.dangerRating:F1})");
+			$"{enemyLabel}: {currentEncounter.enemyName}\nHP: {currentEncounter.currentHp}/{currentEncounter.maxHp}  Block: {currentEncounter.currentBlock}\nDamage: {currentEncounter.minDamage}-{currentEncounter.maxDamage} (+{currentEncounter.damageBuff})  (Danger {currentEncounter.dangerRating:F1})");
 
-		GUI.Box(new Rect(16f, 176f, 520f, 40f), $"Draw: {drawPile.Count}  Discard: {discardPile.Count}  Last enemy hit: {lastEnemyRoll}");
+		GUI.Box(new Rect(16f, 176f, 520f, 54f), $"Draw: {drawPile.Count}  Discard: {discardPile.Count}  Last enemy hit: {lastEnemyRoll}\nEnemy Status: {enemyStatusText}\nEnemy Action: {currentEncounter.lastActionSummary}");
 
 		var handTitle = "Hand (play cards and enhanced effects):";
-		GUI.Box(new Rect(16f, 222f, 1040f, 228f), handTitle);
+		GUI.Box(new Rect(16f, 236f, 1040f, 228f), handTitle);
 
 		var x = 24f;
-		var y = 254f;
+		var y = 268f;
 		for (var i = 0; i < hand.Count; i++)
 		{
 			var card = hand[i];
@@ -2002,7 +2570,7 @@ public class CardCombatGameState : MonoBehaviour
 
 		if (phase == RunPhase.PlayerTurn)
 		{
-			if (GUI.Button(new Rect(16f, 458f, 220f, 34f), "End Turn"))
+			if (GUI.Button(new Rect(16f, 472f, 220f, 34f), "End Turn"))
 			{
 				EndPlayerTurn();
 			}

@@ -12,6 +12,8 @@ public class dungeonGenerator : MonoBehaviour
 	[SerializeField] private int roomMin = 8;
 	[SerializeField] private int roomMax = 14;
 	[SerializeField] private bool generateOnStart = true;
+	[SerializeField] private bool chooseRandomBiomeOnStart = true;
+	[SerializeField, Min(1)] private int nearestNeighborsPerNode = 1;
 	[SerializeField] private string biomeToBeGenerated = "forest";
 	[Tooltip("CR bias ratio. < 1 favors safer creatures, > 1 favors dangerous creatures.")]
 	[SerializeField] private float creatureCrWeightExponent = 1.0f;
@@ -58,10 +60,6 @@ public class dungeonGenerator : MonoBehaviour
 	private Color edgeColor = Color.red;
 	private int overlapIterations = 40;
 	private float overlapPadding = 0.18f;
-	private bool showRegenerateButton = true;
-	private string regenerateButtonText = "Regenerate";
-	private Vector2 regenerateButtonPosition = new Vector2(16f, 16f);
-	private Vector2 regenerateButtonSize = new Vector2(140f, 40f);
 	private bool showBiomeLabel = true;
 	private Vector2 biomeLabelPosition = new Vector2(16f, 64f);
 	private Vector2 biomeLabelSize = new Vector2(240f, 24f);
@@ -77,14 +75,48 @@ public class dungeonGenerator : MonoBehaviour
 	private readonly Dictionary<string, float> creatureDangerByName = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
 	private readonly List<RoomData> generatedRooms = new List<RoomData>();
 	private readonly Dictionary<int, int[]> generatedAdjacencyByRoomId = new Dictionary<int, int[]>();
+	private readonly Dictionary<int, RoomInfo> spawnedRoomInfoById = new Dictionary<int, RoomInfo>();
 
 	private void Start()
 	{
+		if (chooseRandomBiomeOnStart)
+		{
+			ChooseRandomBiomeForStart();
+		}
+
 		currentBiome = biomeToBeGenerated;
 		if (generateOnStart)
 		{
 			GenerateEcosystem();
 		}
+	}
+
+	private void ChooseRandomBiomeForStart()
+	{
+		var ecosystem = LoadEcosystem();
+		if (ecosystem?.biomes == null || ecosystem.biomes.Length == 0)
+		{
+			return;
+		}
+
+		var candidates = new List<string>(ecosystem.biomes.Length);
+		for (var i = 0; i < ecosystem.biomes.Length; i++)
+		{
+			var biome = ecosystem.biomes[i];
+			if (biome == null || string.IsNullOrWhiteSpace(biome.name))
+			{
+				continue;
+			}
+
+			candidates.Add(biome.name);
+		}
+
+		if (candidates.Count == 0)
+		{
+			return;
+		}
+
+		biomeToBeGenerated = candidates[UnityEngine.Random.Range(0, candidates.Count)];
 	}
 
 	private void Update()
@@ -94,17 +126,6 @@ public class dungeonGenerator : MonoBehaviour
 
 	private void OnGUI()
 	{
-		if (!showRegenerateButton)
-		{
-			return;
-		}
-
-		var rect = new Rect(regenerateButtonPosition, regenerateButtonSize);
-		if (GUI.Button(rect, regenerateButtonText))
-		{
-			GenerateEcosystem();
-		}
-
 		if (showBiomeLabel)
 		{
 			var biomeRect = new Rect(biomeLabelPosition, biomeLabelSize);
@@ -138,10 +159,24 @@ public class dungeonGenerator : MonoBehaviour
 		var graph = new Graph
 		{
 			nodes = CreateNodes(roomCount),
-			adjacency = BuildAdjacencyByNearest(positions, roomCount, 2)
+			adjacency = BuildAdjacencyByNearest(positions, roomCount, Mathf.Max(1, nearestNeighborsPerNode))
 		};
-		EnsureConnected(graph.adjacency, positions, 0, roomCount - 1);
-		EnsureGoalIsTerminal(graph.adjacency, positions, 0, roomCount - 1);
+		EnsureConnected(graph.adjacency, positions, 0, -1);
+		var goalId = FindFarthestNodeFromStart(graph.adjacency, positions, 0);
+		if (goalId < 0)
+		{
+			goalId = Mathf.Max(0, roomCount - 1);
+		}
+
+		EnsureGoalIsTerminal(graph.adjacency, positions, 0, goalId);
+		var finalGoalId = FindFarthestNodeFromStart(graph.adjacency, positions, 0);
+		if (finalGoalId >= 0 && finalGoalId != goalId)
+		{
+			goalId = finalGoalId;
+			EnsureGoalIsTerminal(graph.adjacency, positions, 0, goalId);
+		}
+
+		AssignNodeLabels(graph.nodes, 0, goalId);
 		var assignment = AssignRooms(graph, ecosystem, biomeToBeGenerated);
 		currentBiome = assignment.biome;
 		CacheGeneratedMap(assignment.rooms, graph.adjacency);
@@ -186,6 +221,25 @@ public class dungeonGenerator : MonoBehaviour
 		var copy = new int[source.Length];
 		Array.Copy(source, copy, source.Length);
 		return copy;
+	}
+
+	public void HighlightRoomById(int roomId, Color highlightColor)
+	{
+		if (spawnedRoomInfoById.Count == 0)
+		{
+			return;
+		}
+
+		foreach (var pair in spawnedRoomInfoById)
+		{
+			var info = pair.Value;
+			if (info == null)
+			{
+				continue;
+			}
+
+			info.SetHighlighted(pair.Key == roomId, highlightColor);
+		}
 	}
 
 	public float GetCreatureDangerRating(string creatureName)
@@ -342,10 +396,107 @@ public class dungeonGenerator : MonoBehaviour
 		var nodes = new List<RoomNode>(roomCount);
 		for (var i = 0; i < roomCount; i++)
 		{
-			var label = i == 0 ? "START" : (i == roomCount - 1 ? "GOAL" : $"R{i}");
+			var label = i == 0 ? "START" : $"R{i}";
 			nodes.Add(new RoomNode { id = i, label = label });
 		}
 		return nodes;
+	}
+
+	private static void AssignNodeLabels(List<RoomNode> nodes, int startId, int goalId)
+	{
+		if (nodes == null)
+		{
+			return;
+		}
+
+		for (var i = 0; i < nodes.Count; i++)
+		{
+			if (nodes[i] == null)
+			{
+				continue;
+			}
+
+			if (i == startId)
+			{
+				nodes[i].label = "START";
+			}
+			else if (i == goalId)
+			{
+				nodes[i].label = "GOAL";
+			}
+			else
+			{
+				nodes[i].label = $"R{i}";
+			}
+		}
+	}
+
+	private static int FindFarthestNodeFromStart(List<HashSet<int>> adjacency, Vector3[] positions, int startId)
+	{
+		if (adjacency == null || adjacency.Count == 0 || !IsValidNode(startId, adjacency.Count))
+		{
+			return -1;
+		}
+
+		var distances = new int[adjacency.Count];
+		for (var i = 0; i < distances.Length; i++)
+		{
+			distances[i] = -1;
+		}
+
+		var queue = new Queue<int>();
+		queue.Enqueue(startId);
+		distances[startId] = 0;
+
+		while (queue.Count > 0)
+		{
+			var current = queue.Dequeue();
+			foreach (var neighbor in adjacency[current])
+			{
+				if (!IsValidNode(neighbor, adjacency.Count) || distances[neighbor] >= 0)
+				{
+					continue;
+				}
+
+				distances[neighbor] = distances[current] + 1;
+				queue.Enqueue(neighbor);
+			}
+		}
+
+		var bestNode = startId;
+		var bestDepth = 0;
+		var bestDistanceSq = 0f;
+		var hasPositions = positions != null && positions.Length >= adjacency.Count;
+
+		for (var i = 0; i < distances.Length; i++)
+		{
+			if (i == startId || distances[i] < 0)
+			{
+				continue;
+			}
+
+			var depth = distances[i];
+			var distanceSq = hasPositions ? (positions[i] - positions[startId]).sqrMagnitude : 0f;
+			if (depth > bestDepth || (depth == bestDepth && distanceSq > bestDistanceSq))
+			{
+				bestDepth = depth;
+				bestDistanceSq = distanceSq;
+				bestNode = i;
+			}
+		}
+
+		if (bestNode == startId && adjacency.Count > 1)
+		{
+			for (var i = adjacency.Count - 1; i >= 0; i--)
+			{
+				if (i != startId)
+				{
+					return i;
+				}
+			}
+		}
+
+		return bestNode;
 	}
 
 
@@ -1004,6 +1155,7 @@ public class dungeonGenerator : MonoBehaviour
 			return;
 		}
 
+		spawnedRoomInfoById.Clear();
 		var parent = roomsParent != null ? roomsParent : transform;
 		for (var i = 0; i < rooms.Count; i++)
 		{
@@ -1040,6 +1192,9 @@ public class dungeonGenerator : MonoBehaviour
 			{
 				roomObj.transform.SetParent(parent);
 			}
+
+			info.CacheVisualState();
+			spawnedRoomInfoById[info.id] = info;
 
 			spawnedRooms.Add(roomObj);
 		}
@@ -1324,6 +1479,7 @@ public class dungeonGenerator : MonoBehaviour
 		}
 
 		spawnedRooms.Clear();
+		spawnedRoomInfoById.Clear();
 	}
 
 	private void ClearSpawnedEdges()
@@ -1752,4 +1908,49 @@ public class RoomInfo : MonoBehaviour
 	public dungeonGenerator.RoomSize size;
 	public string[] occupants;
 	public string[] neighbors;
+
+	private SpriteRenderer[] cachedSpriteRenderers = Array.Empty<SpriteRenderer>();
+	private Color[] cachedBaseColors = Array.Empty<Color>();
+	private bool visualsCached;
+
+	public void CacheVisualState()
+	{
+		cachedSpriteRenderers = GetComponentsInChildren<SpriteRenderer>(true);
+		cachedBaseColors = new Color[cachedSpriteRenderers.Length];
+		for (var i = 0; i < cachedSpriteRenderers.Length; i++)
+		{
+			cachedBaseColors[i] = cachedSpriteRenderers[i] != null ? cachedSpriteRenderers[i].color : Color.white;
+		}
+
+		visualsCached = true;
+	}
+
+	public void SetHighlighted(bool highlighted, Color highlightColor)
+	{
+		if (!visualsCached)
+		{
+			CacheVisualState();
+		}
+
+		for (var i = 0; i < cachedSpriteRenderers.Length; i++)
+		{
+			var renderer = cachedSpriteRenderers[i];
+			if (renderer == null)
+			{
+				continue;
+			}
+
+			var baseColor = i < cachedBaseColors.Length ? cachedBaseColors[i] : Color.white;
+			if (highlighted)
+			{
+				var tinted = Color.Lerp(baseColor, highlightColor, 0.65f);
+				tinted.a = baseColor.a;
+				renderer.color = tinted;
+			}
+			else
+			{
+				renderer.color = baseColor;
+			}
+		}
+	}
 }

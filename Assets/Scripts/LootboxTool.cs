@@ -23,7 +23,16 @@ public class LootboxTool : MonoBehaviour
 		ExtraDrawEachTurn,
 		BurnOnDamageCardPlay,
 		BlockOnCardDraw,
-		BlockEachTurnStart
+		BlockEachTurnStart,
+		HealEachTurnStart,
+		DamageEachTurnStart,
+		BlockOnDamageCardPlay,
+		EnergyEachTurnStart,
+		BurnOnBlockCardPlay,
+		DrawOnHeal,
+		VulnerableOnDamageCardPlay,
+		VulnerableEachTurnStart,
+		BonusDamageWhenEnemyVulnerable
 	}
 
 	[Serializable]
@@ -64,6 +73,15 @@ public class LootboxTool : MonoBehaviour
 		public int burnOnDamageCardPlay;
 		public int blockOnCardDraw;
 		public int blockEachTurnStart;
+		public int healEachTurnStart;
+		public int damageEachTurnStart;
+		public int blockOnDamageCardPlay;
+		public int energyEachTurnStart;
+		public int burnOnBlockCardPlay;
+		public int drawOnHeal;
+		public int vulnerableOnDamageCardPlay;
+		public int vulnerableEachTurnStart;
+		public int bonusDamageWhenEnemyVulnerable;
 	}
 
 	[Header("References")]
@@ -270,6 +288,33 @@ public class LootboxTool : MonoBehaviour
 					break;
 				case ArtifactEffectType.BlockEachTurnStart:
 					bonuses.blockEachTurnStart += 1;
+					break;
+				case ArtifactEffectType.HealEachTurnStart:
+					bonuses.healEachTurnStart += 1;
+					break;
+				case ArtifactEffectType.DamageEachTurnStart:
+					bonuses.damageEachTurnStart += 1;
+					break;
+				case ArtifactEffectType.BlockOnDamageCardPlay:
+					bonuses.blockOnDamageCardPlay += 1;
+					break;
+				case ArtifactEffectType.EnergyEachTurnStart:
+					bonuses.energyEachTurnStart += 1;
+					break;
+				case ArtifactEffectType.BurnOnBlockCardPlay:
+					bonuses.burnOnBlockCardPlay += 1;
+					break;
+				case ArtifactEffectType.DrawOnHeal:
+					bonuses.drawOnHeal += 1;
+					break;
+				case ArtifactEffectType.VulnerableOnDamageCardPlay:
+					bonuses.vulnerableOnDamageCardPlay += 1;
+					break;
+				case ArtifactEffectType.VulnerableEachTurnStart:
+					bonuses.vulnerableEachTurnStart += 1;
+					break;
+				case ArtifactEffectType.BonusDamageWhenEnemyVulnerable:
+					bonuses.bonusDamageWhenEnemyVulnerable += 2;
 					break;
 			}
 		}
@@ -574,6 +619,182 @@ public class LootboxTool : MonoBehaviour
 			rarity = ItemTool.RarityRare,
 			effectType = ArtifactEffectType.BlockEachTurnStart,
 			description = "At the start of each turn, gain 2 block."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_heal_turn_start",
+			name = "Dew Capsule",
+			rarity = ItemTool.RarityRare,
+			effectType = ArtifactEffectType.HealEachTurnStart,
+			description = "At the start of each turn, heal 1."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_damage_turn_start",
+			name = "Pulse Thorn",
+			rarity = ItemTool.RarityEpic,
+			effectType = ArtifactEffectType.DamageEachTurnStart,
+			description = "At the start of each turn, deal 2 damage."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_block_on_damage_play",
+			name = "Reactive Bark",
+			rarity = ItemTool.RarityRare,
+			effectType = ArtifactEffectType.BlockOnDamageCardPlay,
+			description = "When you play a damage card, gain 2 block."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_energy_turn_start",
+			name = "Solar Core",
+			rarity = ItemTool.RarityEpic,
+			effectType = ArtifactEffectType.EnergyEachTurnStart,
+			description = "At the start of each turn, gain 1 energy."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_burn_on_block_play",
+			name = "Ashen Bulwark",
+			rarity = ItemTool.RarityEpic,
+			effectType = ArtifactEffectType.BurnOnBlockCardPlay,
+			description = "When you play a block card, apply Burn 1."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_draw_on_heal",
+			name = "Echo Vial",
+			rarity = ItemTool.RarityLegendary,
+			effectType = ArtifactEffectType.DrawOnHeal,
+			description = "When you heal, draw 1 card."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_vulnerable_on_damage_play",
+			name = "Hunter Sigil",
+			rarity = ItemTool.RarityRare,
+			effectType = ArtifactEffectType.VulnerableOnDamageCardPlay,
+			description = "When you play a damage card, apply Vulnerable 1."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_vulnerable_turn_start",
+			name = "Opening Gambit",
+			rarity = ItemTool.RarityEpic,
+			effectType = ArtifactEffectType.VulnerableEachTurnStart,
+			description = "At the start of each turn, apply Vulnerable 1."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_bonus_damage_vulnerable",
+			name = "Exposed Veins",
+			rarity = ItemTool.RarityEpic,
+			effectType = ArtifactEffectType.BonusDamageWhenEnemyVulnerable,
+			description = "Deal +2 damage to vulnerable enemies."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_damage_draw_predator",
+			name = "Predator Chorus",
+			rarity = ItemTool.RarityLegendary,
+			effectType = ArtifactEffectType.DrawOnDamageCardPlay,
+			description = "When you play a damage card, draw one card."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_burn_storm",
+			name = "Bonefire Engine",
+			rarity = ItemTool.RarityLegendary,
+			effectType = ArtifactEffectType.BurnOnDamageCardPlay,
+			description = "When you play a damage card, apply Burn 1."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_block_damage_warden",
+			name = "Warden Knot",
+			rarity = ItemTool.RarityRare,
+			effectType = ArtifactEffectType.BlockOnDamageCardPlay,
+			description = "When you play a damage card, gain 2 block."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_heal_start_lattice",
+			name = "Lifespring Lattice",
+			rarity = ItemTool.RarityEpic,
+			effectType = ArtifactEffectType.HealEachTurnStart,
+			description = "At the start of each turn, heal 1."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_iron_tempest",
+			name = "Iron Tempest",
+			rarity = ItemTool.RarityRare,
+			effectType = ArtifactEffectType.DamageCardsGainOne,
+			description = "All damage cards gain +1 in each combat."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_aegis_spore",
+			name = "Aegis Spore",
+			rarity = ItemTool.RarityRare,
+			effectType = ArtifactEffectType.BlockCardsGainOne,
+			description = "All block cards gain +1 in each combat."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_hex_core",
+			name = "Hex Core",
+			rarity = ItemTool.RarityEpic,
+			effectType = ArtifactEffectType.VulnerableOnDamageCardPlay,
+			description = "When you play a damage card, apply Vulnerable 1."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_suppressor_bloom",
+			name = "Suppressor Bloom",
+			rarity = ItemTool.RarityLegendary,
+			effectType = ArtifactEffectType.VulnerableEachTurnStart,
+			description = "At the start of each turn, apply Vulnerable 1."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_frenzy_engine",
+			name = "Frenzy Engine",
+			rarity = ItemTool.RarityLegendary,
+			effectType = ArtifactEffectType.BonusDamageWhenEnemyVulnerable,
+			description = "Deal +2 damage to vulnerable enemies."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_ember_carapace",
+			name = "Ember Carapace",
+			rarity = ItemTool.RarityEpic,
+			effectType = ArtifactEffectType.BurnOnBlockCardPlay,
+			description = "When you play a block card, apply Burn 1."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_siphon_reed",
+			name = "Siphon Reed",
+			rarity = ItemTool.RarityEpic,
+			effectType = ArtifactEffectType.HealOnCardDraw,
+			description = "When you draw a card, heal 3."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_combat_dynamo",
+			name = "Combat Dynamo",
+			rarity = ItemTool.RarityLegendary,
+			effectType = ArtifactEffectType.EnergyEachTurnStart,
+			description = "At the start of each turn, gain 1 energy."
+		});
+		artifactCatalog.Add(new ArtifactDefinition
+		{
+			id = "artifact_thicket_codex",
+			name = "Thicket Codex",
+			rarity = ItemTool.RarityRare,
+			effectType = ArtifactEffectType.DrawOnBlockCardPlay,
+			description = "When you play a block card, draw one card."
 		});
 	}
 
